@@ -41,8 +41,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Recompose in case the user just came back from a Settings screen
-        // having granted a permission.
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -118,7 +116,7 @@ fun ReelPalApp(repository: ReelRepository) {
             }
 
             Spacer(Modifier.height(16.dp))
-            Button(onClick = { refreshTick++ }) { Text("I've granted these — refresh") }
+            Button(onClick = { refreshTick++ }) { Text("I've granted these - refresh") }
 
         } else {
             DashboardSection(repository)
@@ -145,7 +143,7 @@ fun PermissionRow(title: String, subtitle: String, granted: Boolean, onClick: ()
                 Text(subtitle, style = MaterialTheme.typography.bodySmall)
             }
             if (granted) {
-                Text("✓ Granted")
+                Text("Granted")
             } else {
                 Button(onClick = onClick) { Text("Grant") }
             }
@@ -154,4 +152,61 @@ fun PermissionRow(title: String, subtitle: String, granted: Boolean, onClick: ()
 }
 
 @Composable
-fun
+fun DashboardSection(repository: ReelRepository) {
+    val todayCounts = remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+
+    LaunchedEffect(Unit) {
+        repository.observeToday().collectLatest { rows ->
+            todayCounts.value = rows.associate { it.packageName to it.count }
+        }
+    }
+
+    Text("Today", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(8.dp))
+
+    LazyColumn(modifier = Modifier.weight(1f)) {
+        items(MonitoredApps.ALL) { app ->
+            val count = todayCounts.value[app.packageName] ?: 0
+            var monitored by remember { mutableStateOf(repository.isAppMonitored(app.packageName)) }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(app.displayName, style = MaterialTheme.typography.titleSmall)
+                        Text("$count reels scrolled today", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(
+                        checked = monitored,
+                        onCheckedChange = {
+                            monitored = it
+                            repository.setAppMonitored(app.packageName, it)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    var overlayEnabled by remember { mutableStateOf(repository.isOverlayEnabled()) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Show floating counter", modifier = Modifier.weight(1f))
+        Switch(
+            checked = overlayEnabled,
+            onCheckedChange = {
+                overlayEnabled = it
+                repository.setOverlayEnabled(it)
+            }
+        )
+    }
+}
