@@ -152,7 +152,7 @@ fun PermissionRow(title: String, subtitle: String, granted: Boolean, onClick: ()
 }
 
 @Composable
-fun DashboardSection(repository: ReelRepository) {
+fun ColumnScope.DashboardSection(repository: ReelRepository) {
     val todayCounts = remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
 
     LaunchedEffect(Unit) {
