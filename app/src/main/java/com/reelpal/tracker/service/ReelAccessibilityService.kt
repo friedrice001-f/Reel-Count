@@ -15,20 +15,23 @@ import kotlinx.coroutines.launch
 
 /**
  * Core detection engine. This is the only component that can see what's
- * happening inside Instagram/YouTube/Snapchat/TikTok's own screens — that
+ * happening inside Instagram/YouTube/Snapchat/TikTok's own screens - that
  * visibility is exactly what the Accessibility permission grants, which is
  * why Android requires the user to enable it manually in Settings rather
  * than via a normal runtime prompt.
  *
- * Detection heuristic: a "reel" is counted when we see a large vertical
- * scroll (TYPE_VIEW_SCROLLED with a big deltaY) inside a monitored app,
- * debounced so one physical swipe doesn't fire multiple counts. This is
- * intentionally app-version-independent so it keeps working across app
- * updates, at the cost of also picking up other big vertical scrolls in
- * the same app (e.g. Instagram's main feed, not just Reels). To narrow
- * this to the reels feed specifically, inspect event.source's
+ * Detection heuristic: a "reel" is counted on either a scroll event
+ * (TYPE_VIEW_SCROLLED) or a content-change event (TYPE_WINDOW_CONTENT_CHANGED)
+ * inside a monitored app, debounced so one physical swipe doesn't fire
+ * multiple counts. Different apps expose swipe gestures differently -
+ * Instagram tends to fire real scroll events, while YouTube Shorts often
+ * only fires content-change events for its swipe transitions. Watching both
+ * event types keeps this working across apps without per-app-version
+ * tuning, at the cost of also picking up other UI changes in the same app.
+ * To narrow this to the reels feed specifically, inspect event.source's
  * viewIdResourceName / className against MonitoredApps.feedContainerIdHints
- * for the app version you're targeting, and add a filter below.
+ * for the app version you're targeting, and add a filter in
+ * handlePossibleReelScroll.
  */
 class ReelAccessibilityService : AccessibilityService() {
 
@@ -59,16 +62,17 @@ class ReelAccessibilityService : AccessibilityService() {
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> startOverlayIfEnabled(pkg)
-            AccessibilityEvent.TYPE_VIEW_SCROLLED -> handlePossibleReelScroll(pkg, event)
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handlePossibleReelScroll(pkg, event)
         }
     }
 
     private fun handlePossibleReelScroll(pkg: String, event: AccessibilityEvent) {
-        val deltaY = kotlin.math.abs(event.scrollDeltaY)
-        val isLargeVerticalScroll = deltaY > MIN_SCROLL_DELTA_PX
         val now = SystemClock.elapsedRealtime()
 
-        if (isLargeVerticalScroll && now - lastCountedAt > debounceMs) {
+        // Debounced so one physical swipe = one count, regardless of how
+        // many raw events it generates.
+        if (now - lastCountedAt > debounceMs) {
             lastCountedAt = now
             scope.launch {
                 if (!repository.isAppMonitored(pkg)) return@launch
@@ -93,6 +97,5 @@ class ReelAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "ReelAccessibility"
-        private const val MIN_SCROLL_DELTA_PX = 400
     }
 }
