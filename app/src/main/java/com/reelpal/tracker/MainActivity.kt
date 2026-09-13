@@ -15,20 +15,23 @@ import kotlinx.coroutines.launch
 
 /**
  * Core detection engine. This is the only component that can see what's
- * happening inside Instagram/YouTube/Snapchat/TikTok's own screens — that
+ * happening inside Instagram/YouTube/Snapchat/TikTok's own screens - that
  * visibility is exactly what the Accessibility permission grants, which is
  * why Android requires the user to enable it manually in Settings rather
  * than via a normal runtime prompt.
  *
- * Detection heuristic: a "reel" is counted when we see a large vertical
- * scroll (TYPE_VIEW_SCROLLED with a big deltaY) inside a monitored app,
- * debounced so one physical swipe doesn't fire multiple counts. This is
- * intentionally app-version-independent so it keeps working across app
- * updates, at the cost of also picking up other big vertical scrolls in
- * the same app (e.g. Instagram's main feed, not just Reels). To narrow
- * this to the reels feed specifically, inspect event.source's
- * viewIdResourceName / className against MonitoredApps.feedContainerIdHints
- * for the app version you're targeting, and add a filter below.
+ * Detection heuristic: a "reel" is counted on any scroll event
+ * (TYPE_VIEW_SCROLLED) inside a monitored app, debounced so one physical
+ * swipe doesn't fire multiple counts. Page-snap feeds like Reels/Shorts
+ * (built on ViewPager2) often don't report a usable scrollDeltaY, so we
+ * don't filter on scroll distance - any scroll event on a monitored app
+ * counts as a candidate swipe. This is intentionally app-version-independent
+ * so it keeps working across app updates, at the cost of also picking up
+ * other scrolls in the same app (e.g. Instagram's main feed, not just
+ * Reels). To narrow this to the reels feed specifically, inspect
+ * event.source's viewIdResourceName / className against
+ * MonitoredApps.feedContainerIdHints for the app version you're targeting,
+ * and add a filter in handlePossibleReelScroll.
  */
 class ReelAccessibilityService : AccessibilityService() {
 
@@ -64,11 +67,12 @@ class ReelAccessibilityService : AccessibilityService() {
     }
 
     private fun handlePossibleReelScroll(pkg: String, event: AccessibilityEvent) {
-        val deltaY = kotlin.math.abs(event.scrollDeltaY)
-        val isLargeVerticalScroll = deltaY > MIN_SCROLL_DELTA_PX
         val now = SystemClock.elapsedRealtime()
 
-        if (isLargeVerticalScroll && now - lastCountedAt > debounceMs) {
+        // ViewPager2-based feeds (used by Reels/Shorts) often don't report a
+        // pixel scrollDeltaY, so we treat any scroll event on a monitored app
+        // as a candidate swipe, debounced so one physical swipe = one count.
+        if (now - lastCountedAt > debounceMs) {
             lastCountedAt = now
             scope.launch {
                 if (!repository.isAppMonitored(pkg)) return@launch
@@ -93,6 +97,5 @@ class ReelAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "ReelAccessibility"
-        private const val MIN_SCROLL_DELTA_PX = 400
     }
 }
