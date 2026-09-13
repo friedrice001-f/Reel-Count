@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ReelPal</string>
+    <string name="accessibility_service_description">Lets ReelPal count vertical reel/short-video scrolls inside Instagram, YouTube, Snapchat and TikTok so it can show you how much you\'re scrolling.</string>
+</resources>
